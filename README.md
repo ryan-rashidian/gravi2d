@@ -2,6 +2,10 @@
 
 Sandbox where 2d circular bodies simulate gravitational forces on each other. You're able to tweak various parameters, interact using abilities, or just keep it running as a screen saver.
 
+
+https://github.com/user-attachments/assets/2445d770-0e29-4ea3-9284-aae177e1f037
+
+
 NOTE: I'm not a physics expert; I've only played enough KSP to pretend.
 
 ## Build
