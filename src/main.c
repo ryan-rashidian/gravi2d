@@ -233,18 +233,6 @@ void obj_free(Obj *o)
 
 // Spawning and object initialization
 
-Obj *spawn_object(void)
-{
-    if (obj_count >= OBJ_CAP - O_SPECIAL_COUNT - 1) return NULL;
-
-    ObjID id = obj_alloc();
-    Obj *o = &obj[id];
-
-    o->color = GetRandomValue(0, COLOR_COUNT);
-
-    return o;
-}
-
 void spawn_object_random(void)
 {
     if (obj_count >= OBJ_CAP - O_SPECIAL_COUNT - 1) return;
