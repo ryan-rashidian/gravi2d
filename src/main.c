@@ -311,10 +311,12 @@ bool is_in_bounds(Vec2 pos)
     return true;
 }
 
-void calculate_velocity(Obj *o, ObjID id)
+void calculate_velocity(ObjID id)
 {
     // O(n) time per call
     // O(n^2) to call this function for all objects
+    Obj *o_subject = &obj[id];
+
     for (ObjID i = 0; i <= obj_max; i++) {
         if (i == id) continue;
 
@@ -327,7 +329,7 @@ void calculate_velocity(Obj *o, ObjID id)
         // Formula for Gravitational Acceleration (frictionless acceleration):
         // g = G * m / r^2
 
-        float r_sqr = vec2_distance_sqr(o->pos, o_attract->pos);
+        float r_sqr = vec2_distance_sqr(o_subject->pos, o_attract->pos);
 
         if (r_sqr < (o_attract->size * o_attract->size) / 2.0f) {
             // Avoid huge jumps in acceleration
@@ -338,7 +340,7 @@ void calculate_velocity(Obj *o, ObjID id)
         float m = (o_attract->size * o_attract->size) * PI;
         float g = (float)G * m / r_sqr;
 
-        Vec2 slope = vec2_subtract(o->pos, o_attract->pos);
+        Vec2 slope = vec2_subtract(o_subject->pos, o_attract->pos);
         Vec2 velocity = vec2_scale(vec2_normalize(slope), g);
 
         if (i == O_SPECIAL_WHITEHOLE) {
@@ -347,8 +349,8 @@ void calculate_velocity(Obj *o, ObjID id)
             velocity.y = -velocity.y;
         }
 
-        o->vel.x += velocity.x;
-        o->vel.y += velocity.y;
+        o_subject->vel.x += velocity.x;
+        o_subject->vel.y += velocity.y;
     }
 }
 
@@ -370,7 +372,7 @@ void physics_update(float dt)
             // NOTE: It might be better to just update everything on each
             // frame, perfectly syncronized.
             o->timer -= OBJ_VEL_REFRESH;
-            calculate_velocity(o, i);
+            calculate_velocity(i);
         }
 
         o->pos.x += o->vel.x * dt;
