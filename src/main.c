@@ -89,6 +89,13 @@ enum {
     COLOR_COUNT
 };
 
+// Special object IDs
+enum {
+    O_SPECIAL_BLACKHOLE,
+    O_SPECIAL_WHITEHOLE,
+    O_SPECIAL_COUNT
+};
+
 typedef struct {
     bool  active;
     int   color;
@@ -99,13 +106,6 @@ typedef struct {
 } Obj;
 
 typedef uint32_t ObjID;
-
-// Special object IDs
-enum {
-    O_SPECIAL_BLACKHOLE,
-    O_SPECIAL_WHITEHOLE,
-    O_SPECIAL_COUNT
-};
 
 //-----------------------------------------------------------------------------
 // Global variables and constants
@@ -122,12 +122,14 @@ static const char *random_subtitles[MENU_SUBTITLE_COUNT] = {
 static int subtitle;
 
 // Variable settings (controlled by user input)
-static int screen_type = SCREEN_MENU;
-static int G = 1; // Gravitational constant
-static int spawn_rate_mul = 50;
-static bool settings_window = false;
-static int setting_selection = SETTING_GRAVITY;
-static int obj_radius_max = OBJ_RADIUS_MAX / 2;
+static struct {
+    int screen;
+    int G;
+    int spawn_mul;
+    bool popup_window;
+    int popup_selection;
+    int obj_radius_max;
+} settings;
 
 // Simulation boundaries
 // Use OBJ_SIZE_MAX to slightly extend boundaries off screen
@@ -145,9 +147,9 @@ static size_t obj_max = 0;
 // Forward function declarations
 //-----------------------------------------------------------------------------
 
-void game_init(void);
-void game_update(float dt);
-void game_render(void);
+void sim_init(void);
+void sim_update(float dt);
+void sim_render(void);
 void menu_update(void);
 void menu_render(void);
 void pause_update(void);
@@ -166,24 +168,24 @@ int main(void)
     InitWindow(WIN_WIDTH, WIN_HEIGHT, "Gravi2D");
     SetTargetFPS(TARGET_FPS);
 
-    game_init();
+    sim_init();
 
     while (!WindowShouldClose()) {
-        switch (screen_type) {
+        switch (settings.screen) {
             case SCREEN_MENU: {
                 menu_update();
                 menu_render();
             } break;
             case SCREEN_GAME: {
                 float dt = GetFrameTime();
-                game_update(dt);
-                game_render();
+                sim_update(dt);
+                sim_render();
             } break;
             case SCREEN_PAUSE: {
                 float dt = GetFrameTime();
                 input_update_settings(dt);
                 pause_update();
-                game_render();
+                sim_render();
             }
             default: break;
         }
@@ -197,8 +199,19 @@ int main(void)
 // Function definitions
 //-----------------------------------------------------------------------------
 
-void game_init(void)
+void settings_init(void)
 {
+    settings.screen = SCREEN_MENU;
+    settings.G = 1; // Gravitational constant
+    settings.spawn_mul = 50;
+    settings.popup_window = false;
+    settings.popup_selection = SETTING_GRAVITY;
+    settings.obj_radius_max = OBJ_RADIUS_MAX / 2;
+}
+
+void sim_init(void)
+{
+    settings_init();
     subtitle = GetRandomValue(0, MENU_SUBTITLE_COUNT - 1);
     init_object_blackhole();
     init_object_whitehole();
@@ -270,7 +283,7 @@ void spawn_object_random(void)
         default: break;
     }
 
-    o->size = GetRandomValue(OBJ_RADIUS_MIN, obj_radius_max);
+    o->size = GetRandomValue(OBJ_RADIUS_MIN, settings.obj_radius_max);
     o->color = GetRandomValue(0, COLOR_COUNT);
 }
 
@@ -296,8 +309,8 @@ void spawn_update(float dt)
 
     spawn_timer += dt;
 
-    if (spawn_timer >= OBJ_SPAWN_RATE_BASE * spawn_rate_mul) {
-        spawn_timer -= OBJ_SPAWN_RATE_BASE * spawn_rate_mul;
+    if (spawn_timer >= OBJ_SPAWN_RATE_BASE * settings.spawn_mul) {
+        spawn_timer -= OBJ_SPAWN_RATE_BASE * settings.spawn_mul;
 
         spawn_object_random();
     }
@@ -338,19 +351,19 @@ void calculate_velocity(ObjID id)
 
         // Use area of 2D circle as mass substitute
         float m = (o_attract->size * o_attract->size) * PI;
-        float g = (float)G * m / r_sqr;
+        float g = (float)settings.G * m / r_sqr;
 
         Vec2 slope = vec2_subtract(o_subject->pos, o_attract->pos);
-        Vec2 velocity = vec2_scale(vec2_normalize(slope), g);
+        Vec2 v_accel = vec2_scale(vec2_normalize(slope), g);
 
         if (i == O_SPECIAL_WHITEHOLE) {
             // The Not-So-Big Bang! Special case.
-            velocity.x = -velocity.x;
-            velocity.y = -velocity.y;
+            v_accel.x = -v_accel.x;
+            v_accel.y = -v_accel.y;
         }
 
-        o_subject->vel.x += velocity.x;
-        o_subject->vel.y += velocity.y;
+        o_subject->vel.x += v_accel.x;
+        o_subject->vel.y += v_accel.y;
     }
 }
 
@@ -382,37 +395,37 @@ void physics_update(float dt)
 
 void setting_scroll_up(void)
 {
-    if (setting_selection - 1 >= 0) {
-        setting_selection--;
-    } else setting_selection = 0;
+    if (settings.popup_selection - 1 >= 0) {
+        settings.popup_selection--;
+    } else settings.popup_selection = 0;
 }
 
 void setting_scroll_down(void)
 {
-    if (setting_selection + 1 < SETTING_COUNT) {
-        setting_selection++;
-    } else setting_selection = SETTING_COUNT - 1;
+    if (settings.popup_selection + 1 < SETTING_COUNT) {
+        settings.popup_selection++;
+    } else settings.popup_selection = SETTING_COUNT - 1;
 }
 
 void increment_setting(void)
 {
-    switch (setting_selection) {
+    switch (settings.popup_selection) {
         case SETTING_GRAVITY: {
-            G++;
-            if (G > 1000) {
-                G = 1000;
+            settings.G++;
+            if (settings.G > 1000) {
+                settings.G = 1000;
             }
         } break;
         case SETTING_SPAWN_RATE: {
-            spawn_rate_mul++;
-            if (spawn_rate_mul > 1000) {
-                spawn_rate_mul = 1000;
+            settings.spawn_mul++;
+            if (settings.spawn_mul > 1000) {
+                settings.spawn_mul = 1000;
             }
         } break;
         case SETTING_MAX_SIZE: {
-            obj_radius_max++;
-            if (obj_radius_max > OBJ_RADIUS_MAX) {
-                obj_radius_max = OBJ_RADIUS_MAX;
+            settings.obj_radius_max++;
+            if (settings.obj_radius_max > OBJ_RADIUS_MAX) {
+                settings.obj_radius_max = OBJ_RADIUS_MAX;
             }
         } break;
         default: break;
@@ -421,23 +434,23 @@ void increment_setting(void)
 
 void decrement_setting(void)
 {
-    switch (setting_selection) {
+    switch (settings.popup_selection) {
         case SETTING_GRAVITY: {
-            G--;
-            if (G < -1000) {
-                G = -1000;
+            settings.G--;
+            if (settings.G < -1000) {
+                settings.G = -1000;
             }
         } break;
         case SETTING_SPAWN_RATE: {
-            spawn_rate_mul--;
-            if (spawn_rate_mul <= 0) {
-                spawn_rate_mul = 1;
+            settings.spawn_mul--;
+            if (settings.spawn_mul <= 0) {
+                settings.spawn_mul = 1;
             }
         } break;
         case SETTING_MAX_SIZE: {
-            obj_radius_max--;
-            if (obj_radius_max < OBJ_RADIUS_MIN) {
-                obj_radius_max = OBJ_RADIUS_MIN;
+            settings.obj_radius_max--;
+            if (settings.obj_radius_max < OBJ_RADIUS_MIN) {
+                settings.obj_radius_max = OBJ_RADIUS_MIN;
             }
         } break;
         default: break;
@@ -451,7 +464,7 @@ void input_update_settings(float dt)
     static bool action_activated = false;
     static float action_timer = 0.0f;
 
-    if (IsKeyPressed(KEY_TAB)) settings_window = !settings_window;
+    if (IsKeyPressed(KEY_TAB)) settings.popup_window = !settings.popup_window;
 
     if (action_activated) {
         action_timer += dt;
@@ -461,7 +474,7 @@ void input_update_settings(float dt)
         }
     }
 
-    if (settings_window && !action_activated) {
+    if (settings.popup_window && !action_activated) {
         if (IsKeyDown(KEY_UP)) {
             action_activated = true;
             setting_scroll_up();
@@ -515,14 +528,14 @@ void input_update_whitehole(void)
 
 void input_update(float dt)
 {
-    if (IsKeyPressed(KEY_SPACE)) screen_type = SCREEN_PAUSE;
+    if (IsKeyPressed(KEY_SPACE)) settings.screen = SCREEN_PAUSE;
 
     input_update_settings(dt);
     input_update_blackhole();
     input_update_whitehole();
 }
 
-void game_update(float dt)
+void sim_update(float dt)
 {
     input_update(dt);
     spawn_update(dt);
@@ -550,7 +563,7 @@ void render_obj(Obj *o)
     DrawCircle(o->pos.x, o->pos.y, o->size, rl_color);
 }
 
-void game_render(void)
+void sim_render(void)
 {
     BeginDrawing(); {
         ClearBackground(BLACK);
@@ -562,8 +575,8 @@ void game_render(void)
             if (o->active) render_obj(o);
         }
 
-        if (settings_window) render_settings_window();
-        if (screen_type == SCREEN_PAUSE) render_pause_message();
+        if (settings.popup_window) render_settings_window();
+        if (settings.screen == SCREEN_PAUSE) render_pause_message();
 
     } EndDrawing();
 }
@@ -594,21 +607,33 @@ void render_settings_window(void)
     Color color;
 
     offset = 0;
-    color = (setting_selection == SETTING_GRAVITY) ? WHITE : GRAY;
-    draw_setting_text(offset, color, SETTING_TEXT_GRAVITY, G);
+    color = (settings.popup_selection == SETTING_GRAVITY) ? WHITE : GRAY;
+    draw_setting_text(
+        offset, color,
+        SETTING_TEXT_GRAVITY,
+        settings.G
+    );
 
     offset++;
-    color = (setting_selection == SETTING_SPAWN_RATE) ? WHITE : GRAY;
-    draw_setting_text(offset, color, SETTING_TEXT_SPAWN_RATE, spawn_rate_mul);
+    color = (settings.popup_selection == SETTING_SPAWN_RATE) ? WHITE : GRAY;
+    draw_setting_text(
+        offset, color,
+        SETTING_TEXT_SPAWN_RATE,
+        settings.spawn_mul
+    );
 
     offset++;
-    color = (setting_selection == SETTING_MAX_SIZE) ? WHITE : GRAY;
-    draw_setting_text(offset, color, SETTING_TEXT_MAX_SIZE, obj_radius_max);
+    color = (settings.popup_selection == SETTING_MAX_SIZE) ? WHITE : GRAY;
+    draw_setting_text(
+        offset, color,
+        SETTING_TEXT_MAX_SIZE,
+        settings.obj_radius_max
+    );
 }
 
 void pause_update(void)
 {
-    if (IsKeyPressed(KEY_SPACE)) screen_type = SCREEN_GAME;
+    if (IsKeyPressed(KEY_SPACE)) settings.screen = SCREEN_GAME;
 }
 
 void render_pause_message(void)
@@ -625,7 +650,7 @@ void menu_update(void)
     if (IsKeyPressed(KEY_ENTER) ||
         IsMouseButtonPressed(MOUSE_BUTTON_LEFT) ||
         IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
-        screen_type = SCREEN_GAME;
+        settings.screen = SCREEN_GAME;
     }
 }
 
