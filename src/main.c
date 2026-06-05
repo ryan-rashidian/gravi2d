@@ -28,6 +28,7 @@
 #define FONT_SIZE 60
 #define MENU_TITLE  "Gravi2D - 2D Gravity Sim"
 #define MENU_PROMPT "Press Enter or click to start."
+#define MENU_OPTION_WINDOW "Window: < %s >"
 #define MENU_TEXT \
     "Escape - Exit\n" \
     "Spacebar - Pause/Unpause\n" \
@@ -53,10 +54,17 @@
 // Typedefs and enumerations
 //-----------------------------------------------------------------------------
 
+// Window types
+enum {
+    WIN_WINDOWED,
+    WIN_FULLSCREEN,
+    WIN_WINDOWED_FULLSCREEN
+};
+
 // Screen types
 enum {
     SCREEN_MENU,
-    SCREEN_GAME,
+    SCREEN_SIM,
     SCREEN_PAUSE
 };
 
@@ -121,22 +129,26 @@ static const char *random_subtitles[MENU_SUBTITLE_COUNT] = {
 };
 static int subtitle;
 
-// Variable settings (controlled by user input)
+// Settings (controlled by user)
 static struct {
+    int window;
     int screen;
+} settings;
+
+// Variable parameters (controlled by user)
+static struct {
     int G;
     int spawn_mul;
     bool popup_window;
     int popup_selection;
     int obj_radius_max;
-} settings;
+} params;
 
-// Simulation boundaries
-// Use OBJ_SIZE_MAX to slightly extend boundaries off screen
-static const float x_max = WIN_WIDTH + OBJ_RADIUS_MAX;
-static const float x_min = -OBJ_RADIUS_MAX;
-static const float y_max = WIN_HEIGHT + OBJ_RADIUS_MAX;
-static const float y_min = -OBJ_RADIUS_MAX;
+// World/Simulation boundaries
+static struct {
+    int x_max, x_min;
+    int y_max, y_min;
+} world;
 
 // Object array
 static Obj obj[OBJ_CAP];
@@ -157,7 +169,7 @@ void init_object_blackhole(void);
 void init_object_whitehole(void);
 void render_pause_message(void);
 void render_settings_window(void);
-void input_update_settings(float dt);
+void input_update_params(float dt);
 
 //-----------------------------------------------------------------------------
 // Main game loop and raylib window handling
@@ -176,14 +188,14 @@ int main(void)
                 menu_update();
                 menu_render();
             } break;
-            case SCREEN_GAME: {
+            case SCREEN_SIM: {
                 float dt = GetFrameTime();
                 sim_update(dt);
                 sim_render();
             } break;
             case SCREEN_PAUSE: {
                 float dt = GetFrameTime();
-                input_update_settings(dt);
+                input_update_params(dt);
                 pause_update();
                 sim_render();
             }
@@ -199,14 +211,27 @@ int main(void)
 // Function definitions
 //-----------------------------------------------------------------------------
 
+void get_sim_boundaries(int *x_max, int *x_min, int *y_max, int *y_min)
+{
+    int width = GetScreenWidth();
+    int height = GetScreenHeight();
+
+    *x_max = width + OBJ_RADIUS_MAX;
+    *x_min = -OBJ_RADIUS_MAX;
+    *y_max = height + OBJ_RADIUS_MAX;
+    *y_min = -OBJ_RADIUS_MAX;
+}
+
 void settings_init(void)
 {
+    settings.window = WIN_WINDOWED;
     settings.screen = SCREEN_MENU;
-    settings.G = 1; // Gravitational constant
-    settings.spawn_mul = 50;
-    settings.popup_window = false;
-    settings.popup_selection = SETTING_GRAVITY;
-    settings.obj_radius_max = OBJ_RADIUS_MAX / 2;
+    params.G = 1; // Gravitational constant
+    params.spawn_mul = 50;
+    params.popup_window = false;
+    params.popup_selection = SETTING_GRAVITY;
+    params.obj_radius_max = OBJ_RADIUS_MAX / 2;
+    get_sim_boundaries(&world.x_max, &world.x_min, &world.y_max, &world.y_min);
 }
 
 void sim_init(void)
@@ -257,33 +282,33 @@ void spawn_object_random(void)
     int direction = GetRandomValue(0, 3);
     switch (direction) {
         case FROM_TOP: {
-            o->pos.x = GetRandomValue(x_min, x_max);
-            o->pos.y = y_min;
+            o->pos.x = GetRandomValue(world.x_min, world.x_max);
+            o->pos.y = world.y_min;
             o->vel.x = 0;
             o->vel.y = OBJ_START_SPEED;
         } break;
         case FROM_BOTTOM: {
-            o->pos.x = GetRandomValue(x_min, x_max);
-            o->pos.y = y_max;
+            o->pos.x = GetRandomValue(world.x_min, world.x_max);
+            o->pos.y = world.y_max;
             o->vel.x = 0;
             o->vel.y = -OBJ_START_SPEED;
         } break;
         case FROM_LEFT: {
-            o->pos.x = x_min;
-            o->pos.y = GetRandomValue(y_min, y_max);
+            o->pos.x = world.x_min;
+            o->pos.y = GetRandomValue(world.y_min, world.y_max);
             o->vel.x = OBJ_START_SPEED;
             o->vel.y = 0;
         } break;
         case FROM_RIGHT: {
-            o->pos.x = x_max;
-            o->pos.y = GetRandomValue(y_min, y_max);
+            o->pos.x = world.x_max;
+            o->pos.y = GetRandomValue(world.y_min, world.y_max);
             o->vel.x = -OBJ_START_SPEED;
             o->vel.y = 0;
         } break;
         default: break;
     }
 
-    o->size = GetRandomValue(OBJ_RADIUS_MIN, settings.obj_radius_max);
+    o->size = GetRandomValue(OBJ_RADIUS_MIN, params.obj_radius_max);
     o->color = GetRandomValue(0, COLOR_COUNT);
 }
 
@@ -309,8 +334,8 @@ void spawn_update(float dt)
 
     spawn_timer += dt;
 
-    if (spawn_timer >= OBJ_SPAWN_RATE_BASE * settings.spawn_mul) {
-        spawn_timer -= OBJ_SPAWN_RATE_BASE * settings.spawn_mul;
+    if (spawn_timer >= OBJ_SPAWN_RATE_BASE * params.spawn_mul) {
+        spawn_timer -= OBJ_SPAWN_RATE_BASE * params.spawn_mul;
 
         spawn_object_random();
     }
@@ -318,8 +343,8 @@ void spawn_update(float dt)
 
 bool is_in_bounds(Vec2 pos)
 {
-    if (pos.x > x_max || pos.x < x_min) return false;
-    if (pos.y > y_max || pos.y < y_min) return false;
+    if (pos.x > world.x_max || pos.x < world.x_min) return false;
+    if (pos.y > world.y_max || pos.y < world.y_min) return false;
 
     return true;
 }
@@ -351,7 +376,7 @@ void calculate_velocity(ObjID id)
 
         // Use area of 2D circle as mass substitute
         float m = (o_attract->size * o_attract->size) * PI;
-        float g = (float)settings.G * m / r_sqr;
+        float g = (float)params.G * m / r_sqr;
 
         Vec2 slope = vec2_subtract(o_subject->pos, o_attract->pos);
         Vec2 v_accel = vec2_scale(vec2_normalize(slope), g);
@@ -395,37 +420,37 @@ void physics_update(float dt)
 
 void setting_scroll_up(void)
 {
-    if (settings.popup_selection - 1 >= 0) {
-        settings.popup_selection--;
-    } else settings.popup_selection = 0;
+    if (params.popup_selection - 1 >= 0) {
+        params.popup_selection--;
+    } else params.popup_selection = 0;
 }
 
 void setting_scroll_down(void)
 {
-    if (settings.popup_selection + 1 < SETTING_COUNT) {
-        settings.popup_selection++;
-    } else settings.popup_selection = SETTING_COUNT - 1;
+    if (params.popup_selection + 1 < SETTING_COUNT) {
+        params.popup_selection++;
+    } else params.popup_selection = SETTING_COUNT - 1;
 }
 
 void increment_setting(void)
 {
-    switch (settings.popup_selection) {
+    switch (params.popup_selection) {
         case SETTING_GRAVITY: {
-            settings.G++;
-            if (settings.G > 1000) {
-                settings.G = 1000;
+            params.G++;
+            if (params.G > 1000) {
+                params.G = 1000;
             }
         } break;
         case SETTING_SPAWN_RATE: {
-            settings.spawn_mul++;
-            if (settings.spawn_mul > 1000) {
-                settings.spawn_mul = 1000;
+            params.spawn_mul++;
+            if (params.spawn_mul > 1000) {
+                params.spawn_mul = 1000;
             }
         } break;
         case SETTING_MAX_SIZE: {
-            settings.obj_radius_max++;
-            if (settings.obj_radius_max > OBJ_RADIUS_MAX) {
-                settings.obj_radius_max = OBJ_RADIUS_MAX;
+            params.obj_radius_max++;
+            if (params.obj_radius_max > OBJ_RADIUS_MAX) {
+                params.obj_radius_max = OBJ_RADIUS_MAX;
             }
         } break;
         default: break;
@@ -434,37 +459,37 @@ void increment_setting(void)
 
 void decrement_setting(void)
 {
-    switch (settings.popup_selection) {
+    switch (params.popup_selection) {
         case SETTING_GRAVITY: {
-            settings.G--;
-            if (settings.G < -1000) {
-                settings.G = -1000;
+            params.G--;
+            if (params.G < -1000) {
+                params.G = -1000;
             }
         } break;
         case SETTING_SPAWN_RATE: {
-            settings.spawn_mul--;
-            if (settings.spawn_mul <= 0) {
-                settings.spawn_mul = 1;
+            params.spawn_mul--;
+            if (params.spawn_mul <= 0) {
+                params.spawn_mul = 1;
             }
         } break;
         case SETTING_MAX_SIZE: {
-            settings.obj_radius_max--;
-            if (settings.obj_radius_max < OBJ_RADIUS_MIN) {
-                settings.obj_radius_max = OBJ_RADIUS_MIN;
+            params.obj_radius_max--;
+            if (params.obj_radius_max < OBJ_RADIUS_MIN) {
+                params.obj_radius_max = OBJ_RADIUS_MIN;
             }
         } break;
         default: break;
     }
 }
 
-void input_update_settings(float dt)
+void input_update_params(float dt)
 {
     // Create timer and limit input to 5 actions per second
     const float cooldown_duration = 0.2f;
     static bool action_activated = false;
     static float action_timer = 0.0f;
 
-    if (IsKeyPressed(KEY_TAB)) settings.popup_window = !settings.popup_window;
+    if (IsKeyPressed(KEY_TAB)) params.popup_window = !params.popup_window;
 
     if (action_activated) {
         action_timer += dt;
@@ -474,7 +499,7 @@ void input_update_settings(float dt)
         }
     }
 
-    if (settings.popup_window && !action_activated) {
+    if (params.popup_window && !action_activated) {
         if (IsKeyDown(KEY_UP)) {
             action_activated = true;
             setting_scroll_up();
@@ -530,7 +555,7 @@ void input_update(float dt)
 {
     if (IsKeyPressed(KEY_SPACE)) settings.screen = SCREEN_PAUSE;
 
-    input_update_settings(dt);
+    input_update_params(dt);
     input_update_blackhole();
     input_update_whitehole();
 }
@@ -575,7 +600,7 @@ void sim_render(void)
             if (o->active) render_obj(o);
         }
 
-        if (settings.popup_window) render_settings_window();
+        if (params.popup_window) render_settings_window();
         if (settings.screen == SCREEN_PAUSE) render_pause_message();
 
     } EndDrawing();
@@ -583,7 +608,7 @@ void sim_render(void)
 
 // Settings window, menu screen, and pause screen
 
-void draw_setting_text(int y_offset, Color color, const char *text, ...)
+void draw_option_text(int y_offset, Color color, const char *text, ...)
 {
     char buffer[256];
     int text_width;
@@ -607,33 +632,33 @@ void render_settings_window(void)
     Color color;
 
     offset = 0;
-    color = (settings.popup_selection == SETTING_GRAVITY) ? WHITE : GRAY;
-    draw_setting_text(
+    color = (params.popup_selection == SETTING_GRAVITY) ? WHITE : GRAY;
+    draw_option_text(
         offset, color,
         SETTING_TEXT_GRAVITY,
-        settings.G
+        params.G
     );
 
     offset++;
-    color = (settings.popup_selection == SETTING_SPAWN_RATE) ? WHITE : GRAY;
-    draw_setting_text(
+    color = (params.popup_selection == SETTING_SPAWN_RATE) ? WHITE : GRAY;
+    draw_option_text(
         offset, color,
         SETTING_TEXT_SPAWN_RATE,
-        settings.spawn_mul
+        params.spawn_mul
     );
 
     offset++;
-    color = (settings.popup_selection == SETTING_MAX_SIZE) ? WHITE : GRAY;
-    draw_setting_text(
+    color = (params.popup_selection == SETTING_MAX_SIZE) ? WHITE : GRAY;
+    draw_option_text(
         offset, color,
         SETTING_TEXT_MAX_SIZE,
-        settings.obj_radius_max
+        params.obj_radius_max
     );
 }
 
 void pause_update(void)
 {
-    if (IsKeyPressed(KEY_SPACE)) settings.screen = SCREEN_GAME;
+    if (IsKeyPressed(KEY_SPACE)) settings.screen = SCREEN_SIM;
 }
 
 void render_pause_message(void)
@@ -650,7 +675,20 @@ void menu_update(void)
     if (IsKeyPressed(KEY_ENTER) ||
         IsMouseButtonPressed(MOUSE_BUTTON_LEFT) ||
         IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
-        settings.screen = SCREEN_GAME;
+        settings.screen = SCREEN_SIM;
+    }
+    
+    if (IsKeyPressed(KEY_LEFT)) {
+        settings.window--;
+        if (settings.window < WIN_WINDOWED) {
+            settings.window = WIN_WINDOWED_FULLSCREEN;
+        }
+    }
+    if (IsKeyPressed(KEY_RIGHT)) {
+        settings.window++;
+        if (settings.window > WIN_WINDOWED_FULLSCREEN) {
+            settings.window = WIN_WINDOWED;
+        }
     }
 }
 
@@ -671,15 +709,32 @@ void menu_render(void)
         y = (WIN_HEIGHT / 3) + (FONT_SIZE / 2);
         DrawText(MENU_PROMPT, x, y, FONT_SIZE/2, WHITE);
 
+        char *option;
+        switch (settings.window) {
+            case WIN_WINDOWED: {
+                option = "Windowed";
+            } break;
+            case WIN_FULLSCREEN: {
+                option = "Fullscreen";
+            } break;
+            case WIN_WINDOWED_FULLSCREEN: {
+                option = "Windowed-Fullscreen";
+            } break;
+            default: {
+                option = "Windowed";
+            } break;
+        }
+        draw_option_text(0, WHITE, MENU_OPTION_WINDOW, option);
+
         int text_width = MeasureText(MENU_TEXT, FONT_SIZE/3);
         x = (WIN_WIDTH - text_width) / 2;
         y = WIN_HEIGHT / 2;
-        DrawText(MENU_TEXT, x, y, FONT_SIZE/3, WHITE);
+        DrawText(MENU_TEXT, x, y, FONT_SIZE/3, GRAY);
 
         const char *subtitle_text = random_subtitles[subtitle];
         int subtitle_width = MeasureText(subtitle_text, FONT_SIZE/2);
         x = (WIN_WIDTH - subtitle_width) / 2;
-        y = WIN_HEIGHT - (WIN_HEIGHT / 4);
+        y = WIN_HEIGHT - (WIN_HEIGHT / 8);
         DrawText(subtitle_text, x, y, FONT_SIZE/2, ORANGE);
 
     } EndDrawing();
