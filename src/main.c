@@ -20,8 +20,8 @@
 //-----------------------------------------------------------------------------
 
 // Window settings
-#define WIN_WIDTH  1280
-#define WIN_HEIGHT  720
+#define INIT_WIN_WIDTH  1280
+#define INIT_WIN_HEIGHT  720
 #define TARGET_FPS   60
 
 // Menu text
@@ -54,11 +54,12 @@
 // Typedefs and enumerations
 //-----------------------------------------------------------------------------
 
-// Window types
+// Window options
 enum {
-    WIN_WINDOWED,
-    WIN_FULLSCREEN,
-    WIN_WINDOWED_FULLSCREEN
+    OPT_WINDOWED,
+    OPT_FULLSCREEN,
+    OPT_WINDOWED_FULLSCREEN,
+    OPT_COUNT
 };
 
 // Screen types
@@ -129,6 +130,17 @@ static const char *random_subtitles[MENU_SUBTITLE_COUNT] = {
 };
 static int subtitle;
 
+// Window option strings for main menu
+static const char *window_opts[OPT_COUNT] = {
+    "Windowed",
+    "Fullscreen",
+    "Windowed-Fullscreen"
+};
+
+static struct {
+    int width, height;
+} window;
+
 // Settings (controlled by user)
 static struct {
     int window;
@@ -177,7 +189,7 @@ void input_update_params(float dt);
 
 int main(void)
 {
-    InitWindow(WIN_WIDTH, WIN_HEIGHT, "Gravi2D");
+    InitWindow(INIT_WIN_WIDTH, INIT_WIN_HEIGHT, "Gravi2D");
     SetTargetFPS(TARGET_FPS);
 
     sim_init();
@@ -211,27 +223,29 @@ int main(void)
 // Function definitions
 //-----------------------------------------------------------------------------
 
-void get_sim_boundaries(int *x_max, int *x_min, int *y_max, int *y_min)
+void get_sim_boundaries(void)
 {
     int width = GetScreenWidth();
     int height = GetScreenHeight();
 
-    *x_max = width + OBJ_RADIUS_MAX;
-    *x_min = -OBJ_RADIUS_MAX;
-    *y_max = height + OBJ_RADIUS_MAX;
-    *y_min = -OBJ_RADIUS_MAX;
+    world.x_max = width + OBJ_RADIUS_MAX;
+    world.x_min = -OBJ_RADIUS_MAX;
+    world.y_max = height + OBJ_RADIUS_MAX;
+    world.y_min = -OBJ_RADIUS_MAX;
+    window.width = width;
+    window.height = height;
 }
 
 void settings_init(void)
 {
-    settings.window = WIN_WINDOWED;
+    settings.window = OPT_WINDOWED;
     settings.screen = SCREEN_MENU;
     params.G = 1; // Gravitational constant
     params.spawn_mul = 50;
     params.popup_window = false;
     params.popup_selection = SETTING_GRAVITY;
     params.obj_radius_max = OBJ_RADIUS_MAX / 2;
-    get_sim_boundaries(&world.x_max, &world.x_min, &world.y_max, &world.y_min);
+    get_sim_boundaries();
 }
 
 void sim_init(void)
@@ -621,8 +635,8 @@ void draw_option_text(int y_offset, Color color, const char *text, ...)
     va_end(va);
 
     text_width = MeasureText(buffer, font_size);
-    x = (WIN_WIDTH - text_width) / 2;
-    y = (WIN_HEIGHT - (WIN_HEIGHT / 4)) + (font_size * y_offset);
+    x = (window.width - text_width) / 2;
+    y = (window.height - (window.height / 4)) + (font_size * y_offset);
     DrawText(buffer, x, y, font_size, color);
 }
 
@@ -664,10 +678,26 @@ void pause_update(void)
 void render_pause_message(void)
 {
     int text_width = MeasureText(PAUSE_TEXT, FONT_SIZE);
-    int x_text = (WIN_WIDTH - text_width) / 2;
-    int y_text = (WIN_HEIGHT / 2) - (FONT_SIZE / 2);
+    int x_text = (window.width - text_width) / 2;
+    int y_text = (window.height / 2) - (FONT_SIZE / 2);
 
     DrawText(PAUSE_TEXT, x_text, y_text, FONT_SIZE, WHITE);
+}
+
+void set_window_option(void)
+{
+    switch (settings.window) {
+        case OPT_WINDOWED: break; // Default
+        case OPT_FULLSCREEN: {
+            ToggleFullscreen();
+            get_sim_boundaries();
+        } break;
+        case OPT_WINDOWED_FULLSCREEN: {
+            ToggleBorderlessWindowed();
+            get_sim_boundaries();
+        } break;
+        default: break;
+    }
 }
 
 void menu_update(void)
@@ -676,18 +706,19 @@ void menu_update(void)
         IsMouseButtonPressed(MOUSE_BUTTON_LEFT) ||
         IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         settings.screen = SCREEN_SIM;
+        set_window_option();
     }
     
     if (IsKeyPressed(KEY_LEFT)) {
         settings.window--;
-        if (settings.window < WIN_WINDOWED) {
-            settings.window = WIN_WINDOWED_FULLSCREEN;
+        if (settings.window < OPT_WINDOWED) {
+            settings.window = OPT_WINDOWED_FULLSCREEN;
         }
     }
     if (IsKeyPressed(KEY_RIGHT)) {
         settings.window++;
-        if (settings.window > WIN_WINDOWED_FULLSCREEN) {
-            settings.window = WIN_WINDOWED;
+        if (settings.window > OPT_WINDOWED_FULLSCREEN) {
+            settings.window = OPT_WINDOWED;
         }
     }
 }
@@ -700,41 +731,29 @@ void menu_render(void)
         int x, y;
 
         int title_width = MeasureText(MENU_TITLE, FONT_SIZE);
-        x = (WIN_WIDTH - title_width) / 2;
-        y = (WIN_HEIGHT / 4) - (FONT_SIZE / 2);
+        x = (window.width - title_width) / 2;
+        y = (window.height / 4) - (FONT_SIZE / 2);
         DrawText(MENU_TITLE, x, y, FONT_SIZE, ORANGE);
 
         int prompt_width = MeasureText(MENU_PROMPT, FONT_SIZE/2);
-        x = (WIN_WIDTH - prompt_width) / 2;
-        y = (WIN_HEIGHT / 3) + (FONT_SIZE / 2);
+        x = (window.width - prompt_width) / 2;
+        y = (window.height / 3) + (FONT_SIZE / 2);
         DrawText(MENU_PROMPT, x, y, FONT_SIZE/2, WHITE);
 
-        char *option;
-        switch (settings.window) {
-            case WIN_WINDOWED: {
-                option = "Windowed";
-            } break;
-            case WIN_FULLSCREEN: {
-                option = "Fullscreen";
-            } break;
-            case WIN_WINDOWED_FULLSCREEN: {
-                option = "Windowed-Fullscreen";
-            } break;
-            default: {
-                option = "Windowed";
-            } break;
-        }
-        draw_option_text(0, WHITE, MENU_OPTION_WINDOW, option);
+        draw_option_text(
+            0, WHITE, MENU_OPTION_WINDOW,
+            window_opts[settings.window]
+        );
 
         int text_width = MeasureText(MENU_TEXT, FONT_SIZE/3);
-        x = (WIN_WIDTH - text_width) / 2;
-        y = WIN_HEIGHT / 2;
+        x = (window.width - text_width) / 2;
+        y = window.height / 2;
         DrawText(MENU_TEXT, x, y, FONT_SIZE/3, GRAY);
 
         const char *subtitle_text = random_subtitles[subtitle];
         int subtitle_width = MeasureText(subtitle_text, FONT_SIZE/2);
-        x = (WIN_WIDTH - subtitle_width) / 2;
-        y = WIN_HEIGHT - (WIN_HEIGHT / 8);
+        x = (window.width - subtitle_width) / 2;
+        y = window.height - (window.height / 8);
         DrawText(subtitle_text, x, y, FONT_SIZE/2, ORANGE);
 
     } EndDrawing();
