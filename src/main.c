@@ -498,36 +498,36 @@ void decrement_setting(void)
 
 void input_update_params(float dt)
 {
-    // Create timer and limit input to 5 actions per second
-    const float cooldown_duration = 0.2f;
-    static bool action_activated = false;
-    static float action_timer = 0.0f;
+    // Create timer and smooth input to 5 actions per second
+    const float delay_duration = 0.2f;
+    static bool delay_activated = false;
+    static float scroll_timer = 0.0f;
 
     if (IsKeyPressed(KEY_TAB)) params.popup_window = !params.popup_window;
 
-    if (action_activated) {
-        action_timer += dt;
-        if (action_timer >= cooldown_duration) {
-            action_timer -= cooldown_duration;
-            action_activated = false;
+    if (delay_activated) {
+        scroll_timer += dt;
+        if (scroll_timer >= delay_duration) {
+            scroll_timer -= delay_duration;
+            delay_activated = false;
         }
     }
 
-    if (params.popup_window && !action_activated) {
+    if (params.popup_window && !delay_activated) {
         if (IsKeyDown(KEY_UP)) {
-            action_activated = true;
+            delay_activated = true;
             setting_scroll_up();
         }
         if (IsKeyDown(KEY_DOWN)) {
-            action_activated = true;
+            delay_activated = true;
             setting_scroll_down();
         }
         if (IsKeyDown(KEY_LEFT)) {
-            action_activated = true;
+            delay_activated = true;
             decrement_setting();
         }
         if (IsKeyDown(KEY_RIGHT)) {
-            action_activated = true;
+            delay_activated = true;
             increment_setting();
         }
     }
