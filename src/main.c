@@ -48,7 +48,7 @@
 #define OBJ_RADIUS_SPECIAL 200.0f
 #define OBJ_START_SPEED 1.0f
 #define OBJ_VEL_REFRESH 0.05f
-#define OBJ_SPAWN_RATE_BASE 0.01f
+#define OBJ_SPAWN_RATE_BASE 0.1f
 
 //-----------------------------------------------------------------------------
 // Typedefs and enumerations
@@ -241,7 +241,7 @@ void settings_init(void)
     settings.window = OPT_WINDOWED;
     settings.screen = SCREEN_MENU;
     params.G = 1; // Gravitational constant
-    params.spawn_mul = 50;
+    params.spawn_mul = 25;
     params.popup_window = false;
     params.popup_selection = SETTING_GRAVITY;
     params.obj_radius_max = OBJ_RADIUS_MAX / 2;
@@ -451,20 +451,20 @@ void increment_setting(void)
     switch (params.popup_selection) {
         case SETTING_GRAVITY: {
             params.G++;
-            if (params.G > 1000) {
-                params.G = 1000;
+            if (params.G >  100) {
+                params.G = -100;
             }
         } break;
         case SETTING_SPAWN_RATE: {
             params.spawn_mul++;
-            if (params.spawn_mul > 1000) {
-                params.spawn_mul = 1000;
+            if (params.spawn_mul > 100) {
+                params.spawn_mul = 1;
             }
         } break;
         case SETTING_MAX_SIZE: {
             params.obj_radius_max++;
             if (params.obj_radius_max > OBJ_RADIUS_MAX) {
-                params.obj_radius_max = OBJ_RADIUS_MAX;
+                params.obj_radius_max = OBJ_RADIUS_MIN;
             }
         } break;
         default: break;
@@ -476,20 +476,20 @@ void decrement_setting(void)
     switch (params.popup_selection) {
         case SETTING_GRAVITY: {
             params.G--;
-            if (params.G < -1000) {
-                params.G = -1000;
+            if (params.G < -100) {
+                params.G =  100;
             }
         } break;
         case SETTING_SPAWN_RATE: {
             params.spawn_mul--;
             if (params.spawn_mul <= 0) {
-                params.spawn_mul = 1;
+                params.spawn_mul = 100;
             }
         } break;
         case SETTING_MAX_SIZE: {
             params.obj_radius_max--;
             if (params.obj_radius_max < OBJ_RADIUS_MIN) {
-                params.obj_radius_max = OBJ_RADIUS_MIN;
+                params.obj_radius_max = OBJ_RADIUS_MAX;
             }
         } break;
         default: break;
