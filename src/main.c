@@ -13,6 +13,10 @@
 
 #include <raylib.h>
 
+#if defined(PLATFORM_WEB)
+#include <emscripten/emscripten.h>
+#endif
+
 #include "vec2d.h"
 
 //-----------------------------------------------------------------------------
@@ -29,12 +33,18 @@
 #define MENU_TITLE  "Gravi2D - 2D Gravity Sim"
 #define MENU_PROMPT "Press Enter or click to start."
 #define MENU_OPTION_WINDOW "Window: < %s >"
+#if defined(PLATFORM_WEB)
+#define MENU_TEXT \
+    "Spacebar - Pause/Unpause\n" \
+    "Tab - Simulation settings\n"
+#else
 #define MENU_TEXT \
     "Escape - Exit\n" \
     "Spacebar - Pause/Unpause\n" \
     "Tab - Simulation settings\n" \
     "Left-Click - Black Hole ability\n" \
     "Right-Click - White Hole ability"
+#endif
 #define MENU_SUBTITLE_COUNT 5
 #define PAUSE_TEXT "PAUSED"
 #define SETTING_TEXT_GRAVITY    "Gravitational Constant: < %d >"
@@ -187,33 +197,44 @@ void input_update_params(float dt);
 // Main game loop and raylib window handling
 //-----------------------------------------------------------------------------
 
+void update_frame(void)
+{
+    switch (settings.screen) {
+        case SCREEN_SIM: {
+            float dt = GetFrameTime();
+            sim_update(dt);
+            sim_render();
+        } break;
+        case SCREEN_PAUSE: {
+            float dt = GetFrameTime();
+            input_update_params(dt);
+            pause_update();
+            sim_render();
+        } break;
+        case SCREEN_MENU: {
+            menu_update();
+            menu_render();
+        } break;
+        default: break;
+    }
+}
+
 int main(void)
 {
     InitWindow(INIT_WIN_WIDTH, INIT_WIN_HEIGHT, "Gravi2D");
-    SetTargetFPS(TARGET_FPS);
-
     sim_init();
 
+#if defined(PLATFORM_WEB)
+    emscripten_set_main_loop(update_frame, 60, 1);
+#else
+
+    SetTargetFPS(TARGET_FPS);
+
     while (!WindowShouldClose()) {
-        switch (settings.screen) {
-            case SCREEN_MENU: {
-                menu_update();
-                menu_render();
-            } break;
-            case SCREEN_SIM: {
-                float dt = GetFrameTime();
-                sim_update(dt);
-                sim_render();
-            } break;
-            case SCREEN_PAUSE: {
-                float dt = GetFrameTime();
-                input_update_params(dt);
-                pause_update();
-                sim_render();
-            }
-            default: break;
-        }
+        update_frame();
     }
+
+#endif
 
     CloseWindow();
     return 0;
@@ -567,11 +588,18 @@ void input_update_whitehole(void)
 
 void input_update(float dt)
 {
+#if defined(PLATFORM_WEB)
+    if (IsKeyPressed(KEY_ESCAPE)) { ; }
+#endif
+
     if (IsKeyPressed(KEY_SPACE)) settings.screen = SCREEN_PAUSE;
 
     input_update_params(dt);
+
+#if !defined(PLATFORM_WEB)
     input_update_blackhole();
     input_update_whitehole();
+#endif
 }
 
 void sim_update(float dt)
@@ -709,6 +737,7 @@ void menu_update(void)
         set_window_option();
     }
     
+#if !(PLATFORM_WEB)    
     if (IsKeyPressed(KEY_LEFT)) {
         settings.window--;
         if (settings.window < OPT_WINDOWED) {
@@ -721,6 +750,7 @@ void menu_update(void)
             settings.window = OPT_WINDOWED;
         }
     }
+#endif
 }
 
 void menu_render(void)
@@ -740,10 +770,12 @@ void menu_render(void)
         y = (window.height / 3) + (FONT_SIZE / 2);
         DrawText(MENU_PROMPT, x, y, FONT_SIZE/2, WHITE);
 
+#if !(PLATFORM_WEB)
         draw_option_text(
             0, WHITE, MENU_OPTION_WINDOW,
             window_opts[settings.window]
         );
+#endif
 
         int text_width = MeasureText(MENU_TEXT, FONT_SIZE/3);
         x = (window.width - text_width) / 2;
